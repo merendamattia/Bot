@@ -1,0 +1,326 @@
+#property copyright "Copyright 2021, Saverio Mattia Merenda - Investire da Giovani"
+#property link      "https://www.merendamattia.com"
+#property version   "v1"
+#property strict
+
+// ----------------------- INDICATORI
+int DIM                 =   10;
+double mode_main0;
+double mode_signal0;
+double mode_main1;
+double mode_signal1;
+double rsi;
+double mode_main[15];
+double mode_signal[15];
+// ----------------------- ORDINI
+int ticket;
+double lots             =   1;
+double pipSL            =   0.003;
+double pipTP            =   0.003;
+double pipTrailingStop  =   0.001;
+double profit           =   0;
+// ----------------------- BOOLEAN VAR
+bool verify;
+bool typeSignal;
+bool SL2BE;
+bool newOrder;
+// ----------------------- VARIABILI TEST
+double maxModeMain      =   10;
+double minModeMain      =   -10;
+
+void output(){
+
+    string output = " ";
+    
+    output += TimeLocal();
+    output += "\nAsk: " + Ask + " - Bid: "  + Bid;
+    output += "\nNew order: " + newOrder;
+
+    output += "\nArea Maggiore: " + maxModeMain;
+    output += "\nArea Minore: " + minModeMain;
+
+    if(checkConditionsSell()) {
+        //sendOrderSell(); 
+        writeOnChart(false); //output += "Sell";
+    }
+    if(checkConditionsBuy()){
+        //sendOrderBuy(); 
+        writeOnChart(true); //output += "Buy";
+    } 
+
+    for(int i = 0; i < 3; i++){
+        output += "\nArea " + i + ": " + mode_main[i];
+    }
+    for(int i = 0; i < 3; i++){
+        output += "\nSegnale " + i + ": " + mode_signal[i];
+    }
+    
+    
+    Comment(output);
+}
+//-------------------------------------------------------- VERIFICA CONDIZIONE APERTURA ORDINE
+bool checkConditionsSell(){
+    if(mode_main[1] > 0)
+        if(mode_main[1] < mode_main[2] && mode_main[3] < mode_main[2])
+            if(isTicketClose())
+                if(mode_main[1] < mode_main[2] / 100 * 95)
+                    if(rsi > 60)
+                        return true;
+            
+        
+    
+    //if(mode_main0 > 0 && mode_signal0 > mode_main0 && mode_signal1 < mode_main1 && rsi > 45 && isTicketClose() && mode_main0 >= maxModeMain/10*6)
+        //return true;
+    return false;
+}
+
+bool checkConditionsBuy(){
+    if(mode_main[1] < 0)
+        if(mode_main[1] > mode_main[2] )
+            if(isTicketClose())
+                if(mode_main[1] > mode_main[2] / 100 * 95)
+                    if(rsi < 40)
+    //if(mode_main0 < 0 && mode_signal0 < mode_main0 && mode_signal1 > mode_main1 && rsi < 55 && isTicketClose() && mode_main0 <= maxModeMain/10*6)
+                        return true;
+    return false;
+}
+//-------------------------------------------------------- SCRIVE SU CANDELA
+void writeOnChart(bool type){
+    string typeToString;
+    string name = "ObjName " + TimeLocal();
+
+    //if(typeSignal != type){
+        if(type){
+            typeToString = "BUY";
+            sendOrderBuy();
+        } 
+        else{
+            typeToString = "SELL";
+            sendOrderSell(); 
+        } 
+
+        ObjectCreate(name,OBJ_TEXT,0,Time[1],High[10]);
+        ObjectSetText(name,typeToString,10, "Verdana", White);
+        ObjectSet(name, OBJPROP_CORNER, 1);
+        ObjectSet(name, OBJPROP_XDISTANCE, 10);
+        ObjectSet(name, OBJPROP_YDISTANCE, 15);
+    //}
+
+    if(type) typeSignal = true;
+    else typeSignal = false;
+}
+
+//-------------------------------------------------------- TEST
+void writeOnChartTest(){
+    string typeToString = "CHIUDERE";
+    string name = "ObjName " + TimeLocal();
+
+
+        ObjectCreate(name,OBJ_TEXT,0,Time[1],High[1]);
+        ObjectSetText(name,typeToString,7, "Verdana", White);
+        ObjectSet(name, OBJPROP_CORNER, 0);
+        ObjectSet(name, OBJPROP_XDISTANCE, 100);
+        ObjectSet(name, OBJPROP_YDISTANCE, 100);
+    
+
+}
+
+//-------------------------------------------------------- VERIFICA SE L'ORDINE E' CHIUSO
+bool isTicketClose(){
+    if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true){
+        if(OrderCloseTime() != 0 && TimeMinute(OrderCloseTime()) != Minute() && TimeHour(OrderCloseTime()) != Hour()) return true;
+        else return false;
+    }
+    return true;
+
+    //Minute()
+}
+
+//-------------------------------------------------------- CHIUDE ORDINI
+void closeOrder(){
+
+}
+
+//-------------------------------------------------------- INVIO ORDINI
+void sendOrderBuy(){
+    
+    double price = Ask;
+    double stopLoss = price - pipSL;
+    double takeProfit = /*price + pipTP*/ 0;
+    string note = "BUY: " + TimeLocal();
+    ticket = OrderSend(Symbol(), OP_BUY, lots, price, 3, stopLoss, takeProfit, note, 1, 0, clrAqua);
+    SL2BE = false;
+    newOrder = false;
+    
+}
+
+void sendOrderSell(){
+    
+    double price = Bid;
+    double stopLoss = price + pipSL;
+    double takeProfit = /*price - pipTP*/ 0;
+    string note = "SELL: " + TimeLocal();
+    ticket = OrderSend(Symbol(), OP_SELL, lots, price, 3, stopLoss, takeProfit, note, 1, 0, clrAqua);
+    SL2BE = false;
+    newOrder = false;
+    
+}
+
+//-------------------------------------------------------- MODIFICA STOP LOSS
+void modifyStopLoss(){
+    bool ras = false;
+    isTicketClose();
+   
+    if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true){
+        if(OrderType() == 0){       
+            // ----------------------------------------------- BUY
+            double val = OrderStopLoss() + pipTrailingStop * 4;
+            if((val + pipTrailingStop / 2) < Bid)
+                ras = OrderModify(ticket, OrderOpenPrice(), (OrderStopLoss() + pipTrailingStop), OrderTakeProfit(),0,Blue);
+            
+        }
+        if(OrderType() == 1){       
+            // ----------------------------------------------- SELL
+            double val = OrderStopLoss() - pipTrailingStop * 4;
+            if((val - pipTrailingStop / 2) > Ask)
+                ras = OrderModify(ticket, OrderOpenPrice(), (OrderStopLoss() - pipTrailingStop), OrderTakeProfit(),0,Blue);
+        }
+    }
+}
+
+
+//-------------------------------------------------------- CHIUDE TUTTI GLI ORDINI
+void closeAll(){
+   int total = OrdersTotal();
+   
+   
+   for(int i=total-1;i>=0;i--){
+        OrderSelect(i, SELECT_BY_POS);
+        int type   = OrderType();
+
+        bool result = false;
+      
+        switch(type)
+        {
+            //Close opened long positions
+            case OP_BUY       : result = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 5, CLR_NONE );
+                            break;
+            
+            //Close opened short positions
+            case OP_SELL      : result = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_ASK), 5, CLR_NONE );
+                            break;
+
+            //Close pending orders
+            case OP_BUYLIMIT  :
+            case OP_BUYSTOP   :
+            case OP_SELLLIMIT :
+            case OP_SELLSTOP  : result = OrderDelete( OrderTicket() );
+        }
+    }
+}
+
+//-------------------------------------------------------- CONTROLLO NUOVO ORDINE
+void checkNewOrder(){
+    if(!isTicketClose())
+        if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true){
+            if(OrderType() == 0)
+                if(mode_signal0 >= mode_main0 || mode_signal0 >= 0) {
+                    //writeOnChartTest();
+                    newOrder = true;
+                    bool t = OrderClose( ticket, lots, Bid, 3, Red );
+                }
+            if(OrderType() == 1)
+                if(mode_signal0 <= mode_main0 || mode_signal0 <= 0){
+                    //writeOnChartTest();
+                    newOrder = true;
+                    bool t = OrderClose( ticket, lots, Ask, 3, Red );
+                }    
+        }
+}
+
+//-------------------------------------------------------- CONTROLLO NUOVO ORDINE
+/*void checkNewOrder(){
+    if(isTicketClose())
+        if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true){
+            if(OrderType() == 0)
+                if(mode_signal0 >= mode_main) {
+                    newOrder = true;
+                    bool t = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 5, CLR_NONE );
+                }
+            if(OrderType() == 1)
+                if(mode_signal0 <= mode_main){
+                    newOrder = true;
+                    bool t = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_ASK), 5, CLR_NONE );
+                }    
+        }
+}
+*/
+
+//-------------------------------------------------------- AREA MAGGIORE e MINORE
+void checkMaxArea(){
+    if(mode_main0 > maxModeMain) maxModeMain = mode_main0;
+    if(mode_main0 < minModeMain) minModeMain = mode_main0;
+}
+
+//-------------------------------------------------------- PROFITTO
+void refreshProfit(){
+
+}
+
+//-------------------------------------------------------- INIZIALIZZA VARIABILI
+void initVar(){
+    mode_signal0 = 0;
+    mode_main0 = 0;
+    mode_signal1 = 0;
+    mode_main1 = 0;
+}
+//-------------------------------------------------------- AVVIO BOT
+int OnInit(){
+    verify = false;
+    ticket = 0;
+    SL2BE = false;
+    newOrder = true;
+    initVar();
+    EventSetMillisecondTimer(1000);
+    return(INIT_SUCCEEDED);
+}
+
+//-------------------------------------------------------- TERMINE BOT
+void OnDeinit(const int reason){
+    EventKillTimer();
+
+    verify = false;
+    ticket = 0;
+    initVar();
+
+}
+
+//-------------------------------------------------------- MAIN DEL BOT
+void OnTick(){
+    
+    mode_main0 = iMACD(NULL,0,12,26,9,PRICE_OPEN,MODE_MAIN,1) * 10000;
+    mode_signal0 = iMACD(NULL,0,12,26,9,PRICE_OPEN,MODE_SIGNAL,1) * 10000;
+    mode_main1 = iMACD(NULL,0,12,26,9,PRICE_OPEN,MODE_MAIN,2) * 10000;
+    mode_signal1 = iMACD(NULL,0,12,26,9,PRICE_OPEN,MODE_SIGNAL,2) * 10000;
+    rsi = iRSI(NULL,0,14,PRICE_OPEN,0);
+
+    for(int i = 0; i < 15; i++){
+        mode_main[i] = iMACD(NULL, 0, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, i) * 10000;
+        mode_signal[i] = iMACD(NULL, 0, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, i) * 10000;
+    }
+
+
+    output();
+    modifyStopLoss();
+    //checkNewOrder();
+    checkMaxArea();
+
+ 
+}
+
+//-------------------------------------------------------- VIENE RICHIAMATA OGNI SECONDO
+void OnTimer(){
+    
+    output();
+ 
+}

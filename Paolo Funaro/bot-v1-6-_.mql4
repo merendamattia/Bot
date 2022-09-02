@@ -1,0 +1,596 @@
+
+#property copyright "Copyright 2021, Saverio Mattia Merenda - Investire da Giovani"
+#property link      "https://www.merendamattia.com"
+#property version   "v1.6.7"
+#property strict
+
+string versione = "1.6.7";
+string test = "";
+
+int ticketB1 = 0;
+int ticketS1 = 0;
+int ticketB2 = 0;
+int ticketS2 = 0;
+ 
+int SLIPPAGE = 3;
+input double LOTS;                  //Lotti
+input double PipSL;                 //Pip Stop Loss
+input double PipTP;                 //Pip Take Profit
+double SL = 0.0001 * PipSL;
+double TP = 0.0001 * PipTP;
+
+input double PipDiff;               //Differenza Pip tra due ordini 
+double diff = 0.0001 * PipDiff;     //spread per gli ordini pendenti
+
+input bool closeOrder;              //Modalità close order (True = attiva, False no)
+input bool trailingStop;            //Modalità trailing stop (True = attiva, False no)
+
+bool ticketB1Open = false;
+bool ticketS1Open = false;
+bool ticketB2Open = false;
+bool ticketS2Open = false;
+
+bool ticketB1Close = false;
+bool ticketS1Close = false;
+bool ticketB2Close = false;
+bool ticketS2Close = false;
+
+double orderClosePriceBuy1;
+double orderClosePriceSell1;
+double orderClosePriceBuy2;
+double orderClosePriceSell2;
+
+bool SL2BE = true;
+
+int cSL = 0;                     // Numero di movimenti che fa lo SL quando trailing stop non è attivo
+
+input int refreshMillis;         //Refresh Time (1000 = 1s, 500 = 0.5s) 
+
+
+
+
+//-------------------------------------------------------- INVIA ORDINE
+void sendOrders(){
+   cSL = 0;
+   double price = Ask + diff;
+   ticketB1 = OrderSend(Symbol(), OP_BUYSTOP, LOTS, price, SLIPPAGE, (price - SL), (price + TP), "BUY: ticketB1", 1, 0, clrAqua);
+   ticketS1 = OrderSend(Symbol(), OP_SELLLIMIT, LOTS, price, SLIPPAGE, (price + SL), (price - TP), "SELL: ticketS1", 1, 0, clrAqua);
+   
+   price = Ask - diff;
+   ticketB2 = OrderSend(Symbol(), OP_BUYLIMIT, LOTS, price, SLIPPAGE, (price - SL), (price + TP), "BUY: ticketB2", 1, 0, clrAqua);
+   ticketS2 = OrderSend(Symbol(), OP_SELLSTOP, LOTS, price, SLIPPAGE, (price + SL), (price - TP), "SELL: ticketS2", 1, 0, clrAqua); 
+   
+   ticketS1Close = false;
+   ticketB1Close = false;
+   ticketS2Close = false;
+   ticketB2Close = false;
+   SL2BE = false;
+}
+
+//-------------------------------------------------------- ELIMINA ORDINE
+void deleteOrders(){
+   if(ticketB1Open == true && ticketS1Open == true && ticketB2Open == false && ticketS2Open == false){
+      OrderDelete(ticketB2);
+      OrderDelete(ticketS2);
+      ticketB1Open = false;
+      ticketS1Open = false;
+      ticketB2Open = false;
+      ticketS2Open = false;
+   }
+   if(ticketB1Open == false && ticketS1Open == false && ticketB2Open == true && ticketS2Open == true){
+      OrderDelete(ticketB1);
+      OrderDelete(ticketS1);
+      ticketB1Open = false;
+      ticketS1Open = false;
+      ticketB2Open = false;
+      ticketS2Open = false;
+   }
+}
+//-------------------------------------------------------- VERIFICA SE L'ORDINE E' APERTO
+void isTicketOpen(){
+   if(OrderSelect(ticketB1, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      if(OrderType() == 0) ticketB1Open = true;
+      
+   
+   if(OrderSelect(ticketS1, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      if(OrderType() == 1) ticketS1Open = true;
+      
+   
+   if(OrderSelect(ticketB2, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      if(OrderType() == 0) ticketB2Open = true;
+      
+   
+   if(OrderSelect(ticketS2, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      if(OrderType() == 1) ticketS2Open = true;
+}
+
+//-------------------------------------------------------- VERIFICA SE L'ORDINE E' CHIUSO
+void isTicketClose(){
+   if(OrderSelect(ticketB1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(OrderCloseTime() != 0) ticketB1Close = true;
+      orderClosePriceBuy1 = OrderClosePrice();
+   }
+   if(OrderSelect(ticketS1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(OrderCloseTime() != 0) ticketS1Close = true;
+      orderClosePriceSell1 = OrderClosePrice();
+   }
+   if(OrderSelect(ticketB2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(OrderCloseTime() != 0) ticketB2Close = true;
+      orderClosePriceBuy2 = OrderClosePrice();
+   }
+   if(OrderSelect(ticketS2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(OrderCloseTime() != 0) ticketS2Close = true;
+      orderClosePriceSell2 = OrderClosePrice();
+   }
+   
+   if(ticketB1Close == true && ticketS1Close == true && ticketB2Close == true && ticketS2Close == true) SL2BE = false;
+}
+
+
+//-------------------------------------------------------- VERIFICA SE è L'UNICO ORDINE APERTO
+bool lastOrderOpen(int ticket){
+   /*int tickets[4];
+   tickets[0] = ticketB1;
+   tickets[1] = ticketB2;
+   tickets[2] = ticketS1;
+   tickets[3] = ticketS2;
+
+   for(int i = 0; i < 4; i++){
+      if(!(tickets[i] == ticket)){
+         if(OrderSelect(tickets[i], SELECT_BY_TICKET, MODE_HISTORY)==true)
+            if(OrderCloseTime() == 0) return false;
+      }
+   }
+   return true;*/
+
+   if(ticket == ticketB1){
+      if(ticketS1Close == true && ticketB2Close == true && ticketS2Close == true)
+         if(ticketB1Close == false) return true;
+   }
+
+   if(ticket == ticketB2){
+      if(ticketS1Close == true && ticketB1Close == true && ticketS2Close == true)
+         if(ticketB2Close == false) return true;
+   }
+
+   if(ticket == ticketS1){
+      if(ticketB1Close == true && ticketB2Close == true && ticketS2Close == true)
+         if(ticketS1Close == false) return true;
+   }
+
+   if(ticket == ticketS2){
+      if(ticketS1Close == true && ticketB2Close == true && ticketB1Close == true)
+         if(ticketS2Close == false) return true;
+   }
+
+   return false;
+}
+
+//-------------------------------------------------------- MODIFICA ORDINE
+void modifyOrders(){
+
+   bool res;
+
+   if(ticketB1Close == true && ticketS1Close == false){
+      if(OrderSelect(ticketS1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      
+         if((OrderOpenPrice() > Ask >= (OrderOpenPrice() - SL)) && SL2BE == false){ 
+            if(closeOrder && lastOrderOpen(ticketS1)){
+               if(Ask >= (OrderOpenPrice() - SL))
+                  //res = OrderClose(OrderTicket(), OrderLots(), Ask, 1000, clrPink);
+                  test = "ciao";
+            }
+            else
+               res = OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice(),OrderTakeProfit(),0,Blue);           //prova
+            SL2BE = true;
+         }
+            
+         //res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderOpenPrice()-SL),OrderTakeProfit(),0,Blue);
+            // if(!res) Print("Error in OrderModify. Error code=",GetLastError());
+            // else Print("Order modified successfully.");
+      }
+   }
+   
+   if(ticketB1Close == false && ticketS1Close == true){
+      if(OrderSelect(ticketB1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      
+         if((OrderOpenPrice() < Bid <= (OrderOpenPrice() + SL)) && SL2BE == false){ 
+            if(closeOrder && lastOrderOpen(ticketB1))
+               if(Bid <= (OrderOpenPrice() + SL))
+                  //res = OrderClose(OrderTicket(), OrderLots(), Bid, 1000, clrPink);
+                  test = "ciao";
+            else
+               res = OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice(),OrderTakeProfit(),0,Blue);
+            SL2BE = true;
+         } 
+            
+         //res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderOpenPrice()+SL),OrderTakeProfit(),0,Blue);
+            // if(!res) Print("Error in OrderModify. Error code=",GetLastError());
+            // else Print("Order modified successfully.");
+      }
+   }
+   
+   if(ticketB2Close == true && ticketS2Close == false){
+      if(OrderSelect(ticketS2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if((OrderOpenPrice() > Ask >= (OrderOpenPrice() - SL)) && SL2BE == false){ 
+            if(closeOrder && lastOrderOpen(ticketS2))
+               if(Ask >= (OrderOpenPrice() - SL))
+                  //res = OrderClose(OrderTicket(), OrderLots(), Ask, 1000, clrPink);
+                  test = "ciao";
+            else
+               res = OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice(),OrderTakeProfit(),0,Blue);
+            SL2BE = true;
+         }
+            
+         //res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderOpenPrice()-SL),OrderTakeProfit(),0,Blue);
+            // if(!res) Print("Error in OrderModify. Error code=",GetLastError());
+            // else Print("Order modified successfully.");
+      }
+   }
+   
+   
+   if(ticketB2Close == false && ticketS2Close == true){
+      if(OrderSelect(ticketB2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+              
+         if((OrderOpenPrice() < Bid <= (OrderOpenPrice() + SL)) && SL2BE == false){ 
+            if(closeOrder && lastOrderOpen(ticketB2))
+               if(Bid <= (OrderOpenPrice() + SL))
+                  //res = OrderClose(OrderTicket(), OrderLots(), Bid, 1000, clrPink);
+                  test = "ciao";
+            else
+               res = OrderModify(OrderTicket(),OrderOpenPrice(),OrderOpenPrice(),OrderTakeProfit(),0,Blue);
+            SL2BE = true;
+         }
+            
+         //res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderOpenPrice()+SL),OrderTakeProfit(),0,Blue);
+            // if(!res) Print("Error in OrderModify. Error code=",GetLastError());
+            // else Print("Order modified successfully.");
+      }
+   }
+}
+
+//-------------------------------------------------------- ???????
+bool isGreaterThen(double openPrice, double stopLoss, bool type){
+   if(type){
+      if((stopLoss - openPrice) >= (SL * 2)) return true;
+      else return false;
+   }
+   else{
+      if((openPrice - stopLoss) >= (SL * 2)) return true;
+      else return false;
+   }
+}
+
+
+//-------------------------------------------------------- MODIFICA STOP LOSS
+void modifyStopLoss(){
+   bool ras = false;
+   isTicketClose();
+   
+   if(ticketB1Close == false && ticketS1Close == true){
+      if(OrderSelect(ticketB1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if(isGreaterThen(OrderOpenPrice(), OrderStopLoss(), true)){
+            if((OrderOpenPrice() + (SL * 2)) <= Ask)            
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + (SL * 2)), OrderTakeProfit(),0,Blue); 
+         }
+         else{
+            if((OrderStopLoss() + SL) < Ask && (cSL <= 2) && trailingStop == false){
+                if(closeOrder && lastOrderOpen(ticketB1) && cSL == 1)
+                    if(Ask <= (OrderStopLoss() + SL))
+                        ras = OrderClose(OrderTicket(), OrderLots(), Ask, 1000, clrPink);
+                ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + SL), OrderTakeProfit(),0,Blue);  
+
+            }            
+               if((OrderStopLoss() + SL) < Ask && trailingStop == true)            
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + SL), OrderTakeProfit(),0,Blue); 
+               
+            if(ras && (OrderStopLoss() < Ask)) cSL++;
+         }                     
+      }
+   }
+   
+   if(ticketB2Close == false && ticketS2Close == true){
+      if(OrderSelect(ticketB2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if(isGreaterThen(OrderOpenPrice(), OrderStopLoss(), true)){
+            if((OrderOpenPrice() + (SL * 2)) <= Ask)            
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + (SL * 2)), OrderTakeProfit(),0,Blue); 
+         }
+         else{
+            if((OrderStopLoss() + SL) < Ask && (cSL <= 2) && trailingStop == false){
+                if(closeOrder && lastOrderOpen(ticketB2) && cSL == 1)
+                    if(Ask <= (OrderStopLoss() + SL))
+                        ras = OrderClose(OrderTicket(), OrderLots(), Ask, 1000, clrPink);
+                ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + SL), OrderTakeProfit(),0,Blue);  
+            }            
+               if((OrderStopLoss() + SL) < Ask && trailingStop == true)            
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + SL), OrderTakeProfit(),0,Blue);
+            
+            if(ras && (OrderStopLoss() < Ask)) cSL++;
+         }                        
+      }
+   }
+   
+   if(ticketB1Close == true && ticketS1Close == false){
+      if(OrderSelect(ticketS1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if(isGreaterThen(OrderOpenPrice(), OrderStopLoss(), false)){
+            if((OrderOpenPrice() - (SL * 2)) >= Bid)
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - (SL * 2)), OrderTakeProfit(),0,Blue);  
+         }
+         else{
+            if(OrderStopLoss() > Bid + SL && (cSL <= 2) && trailingStop == false){
+                if(closeOrder && lastOrderOpen(ticketS1) && cSL == 1)
+                    if(Bid >= (OrderStopLoss() - SL))
+                        ras = OrderClose(OrderTicket(), OrderLots(), Bid, 1000, clrPink);
+                ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - SL), OrderTakeProfit(),0,Blue); 
+            }
+            if(OrderStopLoss() > Bid + SL && trailingStop == true)
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - SL), OrderTakeProfit(),0,Blue); 
+               
+            if(ras && (OrderStopLoss() > Bid)) cSL++;
+         }                   
+      }
+   }
+   
+   if(ticketB2Close == true && ticketS2Close == false){
+      if(OrderSelect(ticketS2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if(isGreaterThen(OrderOpenPrice(), OrderStopLoss(), false)){
+            if((OrderOpenPrice() - (SL * 2)) >= Bid)
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - (SL * 2)), OrderTakeProfit(),0,Blue);  
+         }
+         else{
+            if(OrderStopLoss() > Bid + SL && (cSL <= 2) && trailingStop == false){
+                if(closeOrder && lastOrderOpen(ticketS1) && cSL == 1)
+                    if(Bid >= (OrderStopLoss() - SL))
+                        ras = OrderClose(OrderTicket(), OrderLots(), Bid, 1000, clrPink);
+                ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - SL), OrderTakeProfit(),0,Blue); 
+            }
+            if(OrderStopLoss() > Bid + SL && trailingStop == true)
+               ras = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - SL), OrderTakeProfit(),0,Blue); 
+            
+            if(ras && (OrderStopLoss() > Bid)) cSL++;
+         }                        
+      }
+   }
+   
+   
+   /*
+   if(ticketB2Close == false && ticketS2Close == true){
+      if(OrderSelect(ticketB2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if((OrderStopLoss() + SL) < Ask)
+            res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() + SL),0,0,Blue);                        
+      }
+   }
+   
+   if(ticketB1Close == true && ticketS1Close == false){
+      if(OrderSelect(ticketS1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+         if((OrderStopLoss() - SL) > Bid)
+            res = OrderModify(OrderTicket(),OrderOpenPrice(),(OrderStopLoss() - SL),0,0,Blue);                        
+      }
+   }
+   */
+   
+   
+   
+   if(!ras) Print("Error in OrderModify. Error code = ",GetLastError());
+   else Print("Order modified successfully.");
+}
+
+//-------------------------------------------------------- GET STOP LOSS
+double getStopLoss(int ticket){
+   if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      return OrderStopLoss();
+   return NULL;
+}
+
+//-------------------------------------------------------- GET TAKE PROFIT
+double getTakeProfit(int ticket){
+   if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      return OrderTakeProfit();
+   return NULL;
+}
+
+//-------------------------------------------------------- GET OPEN PRICE
+double getOpenPrice(int ticket){
+   if(OrderSelect(ticket, SELECT_BY_TICKET, MODE_HISTORY)==true)
+      return OrderOpenPrice();
+   return NULL;
+}
+
+//-------------------------------------------------------- VERIFICA CHE IL PREZZO NON SIA SUPERIORE AGLI ASK E MINORE AI BID
+bool biggerAskOrSmallerBid(){
+   if(OrderSelect(ticketB1, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(Ask > OrderOpenPrice() && OrderType() == 4)
+         return true;
+   }
+
+   if(OrderSelect(ticketS2, SELECT_BY_TICKET, MODE_HISTORY)==true){
+      if(Bid < OrderOpenPrice() && OrderType() == 5)
+         return true;
+   }
+
+   return false;
+}
+
+
+//-------------------------------------------------------- VERIFICA BUG
+void verifyBug(){
+   if(ticketB1 == -1 || ticketB2 == -1 || ticketS1 == -1 || ticketS2 == -1)
+      closeAll();
+   
+   /*if((getStopLoss(ticketS1) < Bid && getStopLoss(ticketS2) < Bid) || (getStopLoss(ticketB1) > Ask && getStopLoss(ticketB2) > Ask))
+      closeAll();*/
+  
+   
+      
+    isTicketClose();
+    if(ticketB1Close == true && ticketB2Close == true && ticketS1Close == false && ticketS2Close == false)
+        closeAll();
+    
+    if(ticketS1Close == true && ticketS2Close == true && ticketB1Close == false && ticketB2Close == false)
+        closeAll();  
+   
+    if(OrdersTotal() > 4 || OrdersTotal() == 3) closeAll();
+   
+    if(OrdersTotal() == 2){
+        bool test = false;
+        int total = OrdersTotal();
+        
+        for(int i=total-1;i>=0;i--){
+            OrderSelect(i, SELECT_BY_POS);
+            int type = OrderType();
+            if(type >= 2 && type <= 5)
+                test = true;
+            else test = false;
+        }
+        if(test) closeAll();
+    }
+
+   if(biggerAskOrSmallerBid()) closeAll();
+
+
+}
+
+//-------------------------------------------------------- INIZIALIZZA VARIABILI
+void flagTicketClose(){
+    ticketS1Close = false;
+    ticketB1Close = false;
+    ticketS2Close = false;
+    ticketB2Close = false;
+}
+
+//-------------------------------------------------------- verifica se tutti gli ordini sono chiusi
+bool isAllClose(){
+   if(ticketB1Close == true && ticketS1Close == true && ticketB2Close == true && ticketS2Close == true) return true;
+   else return false;
+}
+
+//-------------------------------------------------------- CHIUDE TUTTI GLI ORDINI
+void closeAll(){
+  int total = OrdersTotal();
+  
+  
+  for(int i=total-1;i>=0;i--)
+  {
+    OrderSelect(i, SELECT_BY_POS);
+    int type   = OrderType();
+
+    bool result = false;
+    
+    switch(type)
+    {
+      //Close opened long positions
+      case OP_BUY       : result = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 5, CLR_NONE );
+                          break;
+      
+      //Close opened short positions
+      case OP_SELL      : result = OrderClose( OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_ASK), 5, CLR_NONE );
+                          break;
+
+      //Close pending orders
+      case OP_BUYLIMIT  :
+      case OP_BUYSTOP   :
+      case OP_SELLLIMIT :
+      case OP_SELLSTOP  : result = OrderDelete( OrderTicket() );
+    }
+    
+    if(result == false)
+    {
+       if (GetLastError()>0) Alert("Order " , OrderTicket() , " failed to close. Error:" , GetLastError() );
+      Sleep(1000);
+    }  
+  }
+  
+  OnDeinit(0);
+  OnInit();
+}
+
+string orderFromBool2string(bool type){
+   if(type) return " e' chiuso";
+   else return " e' aperto";
+}
+
+string activeOrNot(bool type){
+   if(type) return "attivo";
+   else return "non attivo";
+}
+
+string SL2BEfromBool2string(bool type){
+   if(type) return "si";
+   else return "no";
+}
+
+//-------------------------------------------------------- OUTPUT
+void output(){
+   datetime tm=TimeCurrent();
+   MqlDateTime stm;
+   TimeToStruct(tm,stm);
+
+   string output = "All Rights reserved " + (string)stm.year + ", Investire da Giovani - merendamattia.com - ";
+   output += "v" + versione;
+   output += "\n\n" + TimeLocal();
+   output += "\nAsk: " + Ask + " - Bid: "  + Bid;
+   output += "\nTicketB1: " + ticketB1 + orderFromBool2string(ticketB1Close); 
+   output += "\nTicketS1: " + ticketS1 + orderFromBool2string(ticketS1Close);
+   output += "\nTicketB2: " + ticketB2 + orderFromBool2string(ticketB2Close);
+   output += "\nTicketS2: " + ticketS2 + orderFromBool2string(ticketS2Close); 
+   //output += "\n\nSL spostato a BE: " + SL2BEfromBool2string(SL2BE); 
+   output += "\n\nMode Close Orders: " + activeOrNot(closeOrder);
+   output += "\nMode Trailing Stop: " + activeOrNot(trailingStop);
+   output += "\n\nError: " + GetLastError();
+   
+   Comment(output);
+}
+//--------------------------------------------------------//--------------------------------------------------------//--------------------------------------------------------
+//-------------------------------------------------------- AVVIO BOT
+int OnInit(){
+   ticketB1 = 0;
+   ticketS1 = 0;
+   ticketB2 = 0;
+   ticketS2 = 0; 
+   sendOrders();
+   //EventSetTimer(1);
+   
+   EventSetMillisecondTimer(refreshMillis);
+   
+   return(INIT_SUCCEEDED);
+}
+
+//-------------------------------------------------------- TERMINE BOT
+void OnDeinit(const int reason){
+//--- destroy timer
+   EventKillTimer();
+   ticketB1 = 0;
+   ticketS1 = 0;
+   ticketB2 = 0;
+   ticketS2 = 0; 
+   
+}
+
+//-------------------------------------------------------- MAIN DEL BOT
+void OnTick(){
+
+   isTicketClose();
+      
+   if(isAllClose()){
+      sendOrders();
+      flagTicketClose();
+   }
+     
+   isTicketOpen();
+   
+   deleteOrders();
+   
+   //modifyOrders();
+}
+
+//-------------------------------------------------------- VIENE RICHIAMATA OGNI SECONDO
+void OnTimer(){
+   output();
+
+   modifyOrders();
+  
+   modifyStopLoss();
+  
+   verifyBug(); 
+}
+
