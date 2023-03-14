@@ -10,6 +10,7 @@ var menu = "Comandi:\n"
 // menu += "/cacca fai cacca\n";
 // menu += "/uva mangia uva\n";
 menu += "/BTCfees get btc fees\n";
+menu += "/train get train status\n";
 
 const bot = new Telegraf(`${process.env.BOT_TOKEN}`);
 
@@ -33,7 +34,7 @@ bot.command("start", (ctx) => {
 
     bot.hears("hi", (ctx) => ctx.reply("Hey there"));
 */
-
+ 
 bot.command("menu", (ctx) => {
     ctx.reply(menu);
 });
@@ -45,10 +46,16 @@ bot.command("BTCfees", async (ctx) => {
    var reply = "High: \t" + getFees("FASTEST", data) + "\n";
    reply += "Med: \t" + getFees("HALFHOUR", data) + "\n";
    reply += "Slow: \t" + getFees("HOUR", data) + "\n";
-   //reply += "Very slow: " + getFees("ECONOMY", data) + "\n";
+   reply += "Very slow: " + getFees("ECONOMY", data) + "\n";
+   reply += "Minimum: " + getFees("MINIMUM", data) + "\n";
    
    ctx.reply("Priority (sat/vB): \n" + reply);
    ctx.reply(menu);
+});
+
+bot.command("train", (ctx) => {
+    const msg = ctx.message;
+    ctx.reply(msg);
 });
 
 // ---------------------------------------- FUNZIONI VARIE
@@ -62,7 +69,7 @@ async function getData(url: string) {
 
 // Serve per il comando BTCfees, ritorna le fees
 function getFees(type: string, data: string) {
-    var inizio = 0, fine;
+    var inizio = 0, fine = 0;
     switch(type){
         case "FASTEST": 
             inizio = data.indexOf("fastestFee\":") + 12;
@@ -79,10 +86,18 @@ function getFees(type: string, data: string) {
         case "ECONOMY":
             inizio = data.indexOf("economyFee\":") + 12;
             break;   
+        
+        case "MINIMUM":
+            inizio = data.indexOf("minimumFee\":") + 12;
+            break;  
     }
     
     fine = data.indexOf(",", inizio + 1);
-    return data.substring(inizio, fine);
+    
+    if(type == "MINIMUM")
+        fine = data.indexOf("}");
+    
+        return data.substring(inizio, fine);
 }
 
 // ---------------------------------------- AVVIO BOT
