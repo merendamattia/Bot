@@ -1,6 +1,3 @@
-// Guida: https://www.ludusrusso.dev/blog/2022/06/telegram-bot-node
-// Deploy: https://www.cyclic.sh/posts/how-to-build-a-telegram-bot/
-
 import { Telegraf } from "telegraf";
 import fetch  from "isomorphic-fetch";
 require('dotenv').config();
@@ -10,7 +7,6 @@ var menu = "Comandi:\n"
 // menu += "/cacca fai cacca\n";
 // menu += "/uva mangia uva\n";
 menu += "/BTCfees get btc fees\n";
-menu += "/train get train status\n";
 
 const bot = new Telegraf(`${process.env.BOT_TOKEN}`);
 
@@ -34,7 +30,7 @@ bot.command("start", (ctx) => {
 
     bot.hears("hi", (ctx) => ctx.reply("Hey there"));
 */
- 
+
 bot.command("menu", (ctx) => {
     ctx.reply(menu);
 });
@@ -53,11 +49,6 @@ bot.command("BTCfees", async (ctx) => {
    ctx.reply(menu);
 });
 
-bot.command("train", (ctx) => {
-    const msg = ctx.message;
-    ctx.reply(msg);
-});
-
 // ---------------------------------------- FUNZIONI VARIE
 // Effettua fetch di un URL
 async function getData(url: string) {
@@ -69,7 +60,7 @@ async function getData(url: string) {
 
 // Serve per il comando BTCfees, ritorna le fees
 function getFees(type: string, data: string) {
-    var inizio = 0, fine = 0;
+    var inizio = 0, fine;
     switch(type){
         case "FASTEST": 
             inizio = data.indexOf("fastestFee\":") + 12;
@@ -89,15 +80,15 @@ function getFees(type: string, data: string) {
         
         case "MINIMUM":
             inizio = data.indexOf("minimumFee\":") + 12;
-            break;  
+            break; 
     }
     
-    fine = data.indexOf(",", inizio + 1);
-    
-    if(type == "MINIMUM")
+    if(type != "MINIMUM")
+        fine = data.indexOf(",", inizio + 1);
+    else
         fine = data.indexOf("}");
     
-        return data.substring(inizio, fine);
+    return data.substring(inizio, fine);
 }
 
 // ---------------------------------------- AVVIO BOT
